@@ -1,7 +1,7 @@
 
 import csv
 from pathlib import Path
-
+import io
 
 def load_csv(filepath):
     """Charge les transactions depuis un fichier CSV."""
@@ -24,3 +24,10 @@ def load_all_csv(directory="data"):
         transactions.extend(data)
 
     return transactions
+
+def load_csv_bytes(content):
+    """Charge un CSV à partir des octets déjà lus."""
+    text = content.decode("utf-8-sig")
+
+    reader = csv.DictReader(io.StringIO(text))
+    return list(reader)

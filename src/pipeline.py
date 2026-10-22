@@ -1,7 +1,7 @@
 
 from pathlib import Path
 
-from src.loader import load_csv
+from src.loader import load_csv_bytes
 from src.processor import (
     sum_by_origin_iban,
     sum_by_source_bank,
@@ -11,36 +11,50 @@ from src.processor import (
 from src.database import insert_file_results
 
 
+def process_file(filepath, fail_after=None):
+    filepath = Path(filepath)
+
+    # Une seule lecture physique du fichier.
+    content = filepath.read_bytes()
+
+    transactions = load_csv_bytes(content)
+
+    if not transactions:
+        raise ValueError(
+            f"Fichier vide : {filepath.name}"
+        )
+
+    sender_totals = sum_by_origin_iban(transactions)
+    bank_totals = sum_by_source_bank(transactions)
+    receiver_totals = sum_by_destination_iban(
+        transactions
+    )
+    flagged = flag_large_transactions(transactions)
+
+    return insert_file_results(
+        filepath.name,
+        content,
+        flagged,
+        sender_totals,
+        bank_totals,
+        receiver_totals,
+        fail_after=fail_after,
+    )
+
+
 def run_pipeline():
     csv_files = sorted(Path("data").glob("*.csv"))
 
     if not csv_files:
-        raise RuntimeError("Aucun CSV trouvé dans data/")
+        raise RuntimeError("Aucun fichier CSV trouvé")
 
     inserted = 0
     skipped = 0
 
     for filepath in csv_files:
-        print(f"\nTraitement : {filepath.name}")
+        print(f"Traitement : {filepath.name}")
 
-        transactions = load_csv(filepath)
-
-        sender_totals = sum_by_origin_iban(transactions)
-        bank_totals = sum_by_source_bank(transactions)
-        receiver_totals = sum_by_destination_iban(
-            transactions
-        )
-        flagged = flag_large_transactions(transactions)
-
-        success = insert_file_results(
-            filepath,
-            flagged,
-            sender_totals,
-            bank_totals,
-            receiver_totals,
-        )
-
-        if success:
+        if process_file(filepath):
             inserted += 1
         else:
             skipped += 1
