@@ -43,7 +43,7 @@ def flag_large_transactions(transactions):
     for tx in transactions:
         new_tx = {
             **tx,
-            "flag": Decimal(tx["montant"]) > Decimal("6000")
+            "flag": Decimal(tx["montant"]) > Decimal("5000")
         }
         result.append(new_tx)
 
