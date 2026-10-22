@@ -15,10 +15,10 @@ from src.s3_client import (
 )
 
 
-def process_content(filename, content):
-    """Traite les octets d'un CSV, indépendamment
-    de son origine (S3 ou autre).
-    """
+
+def process_content(filename, content, fail_after=None):
+    """Traite un CSV depuis son contenu binaire."""
+
     transactions = load_csv_bytes(content)
 
     if not transactions:
@@ -38,7 +38,23 @@ def process_content(filename, content):
         sender_totals,
         bank_totals,
         receiver_totals,
+        fail_after=fail_after,
     )
+
+def process_file(filepath, fail_after=None):
+    """Traite un CSV local, notamment pour les tests."""
+
+    from pathlib import Path
+
+    filepath = Path(filepath)
+    content = filepath.read_bytes()
+
+    return process_content(
+        filepath.name,
+        content,
+        fail_after=fail_after,
+    )
+
 
 
 def process_s3_file(key):
