@@ -75,7 +75,7 @@ jobs:
             -f sql/init.sql
 
       - name: Generate CSV
-        run: python -m src.generate_csv
+        run: python -m src.generate
 
       - name: Upload CSV to S3
         run: python -m src.upload_csv
