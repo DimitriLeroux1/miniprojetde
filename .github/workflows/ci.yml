@@ -1,0 +1,70 @@
+
+name: CI Data Pipeline
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: datauser
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: transactions
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U datauser -d transactions"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://datauser:test_password@localhost:5432/transactions
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Initialize database
+        run: |
+          PGPASSWORD=test_password psql \
+            -h localhost \
+            -U datauser \
+            -d transactions \
+            -v ON_ERROR_STOP=1 \
+            -f sql/init.sql
+
+      - name: Generate CSV
+        run: python -m src.generate_csv
+
+      - name: Run unit tests
+        run: python -m pytest tests/test_processor.py -v
+
+      - name: Run data pipeline
+        run: python -m src.pipeline
+
+      - name: Run integration tests
+        run: |
+          python -m pytest \
+            tests/test_integration.py \
+            tests/test_rollback.py \
+            -v
+
+      - name: Verify idempotence
+        run: python -m src.pipeline
