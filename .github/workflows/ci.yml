@@ -1,12 +1,12 @@
 
-name: CI Data Pipeline
+name: CI Data Pipeline S3
 
 on:
   push:
   pull_request:
 
 jobs:
-  test:
+  integration-tests:
     runs-on: ubuntu-latest
 
     services:
@@ -26,6 +26,10 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://datauser:test_password@localhost:5432/transactions
+      S3_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY: ci_test_user
+      S3_SECRET_KEY: ci_test_secret_2026
+      S3_BUCKET: financial-transactions
 
     steps:
       - name: Checkout
@@ -41,7 +45,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Initialize database
+      - name: Start RustFS
+        run: |
+          docker run -d \
+            --name rustfs-ci \
+            -p 127.0.0.1:9000:9000 \
+            -e RUSTFS_ACCESS_KEY="$S3_ACCESS_KEY" \
+            -e RUSTFS_SECRET_KEY="$S3_SECRET_KEY" \
+            rustfs/rustfs:latest /data
+
+      - name: Wait for RustFS
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:9000/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs rustfs-ci
+          exit 1
+
+      - name: Initialize PostgreSQL
         run: |
           PGPASSWORD=test_password psql \
             -h localhost \
@@ -51,20 +75,30 @@ jobs:
             -f sql/init.sql
 
       - name: Generate CSV
-        run: python -m src.generate
+        run: python -m src.generate_csv
 
-      - name: Run unit tests
-        run: python -m pytest tests/test_processor.py -v
+      - name: Upload CSV to S3
+        run: python -m src.upload_csv
+
+      - name: Unit tests
+        run: |
+          python -m pytest \
+            tests/test_processor.py \
+            tests/test_s3.py -v
 
       - name: Run data pipeline
         run: python -m src.pipeline
 
-      - name: Run integration tests
+      - name: Integration tests
         run: |
           python -m pytest \
             tests/test_integration.py \
-            tests/test_rollback.py \
-            -v
+            tests/test_s3_integration.py \
+            tests/test_rollback.py -v
 
       - name: Verify idempotence
         run: python -m src.pipeline
+
+      - name: RustFS logs on failure
+        if: failure()
+        run: docker logs rustfs-ci
