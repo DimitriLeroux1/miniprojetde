@@ -51,7 +51,7 @@ jobs:
             -f sql/init.sql
 
       - name: Generate CSV
-        run: python -m src.generate_csv
+        run: python -m src.generate
 
       - name: Run unit tests
         run: python -m pytest tests/test_processor.py -v
